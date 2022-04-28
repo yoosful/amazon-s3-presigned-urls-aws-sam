@@ -14,7 +14,6 @@
 */
 
 "use strict";
-
 const AWS = require("aws-sdk");
 AWS.config.update({ region: process.env.AWS_REGION });
 const s3 = new AWS.S3();
@@ -24,24 +23,28 @@ const URL_EXPIRATION_SECONDS = 300;
 
 // Main Lambda entry point
 exports.handler = async (event) => {
-  return await getUploadURL(event);
+  return await getDownloadURLs(event);
 };
 
-const getUploadURL = async function (event) {
-  const randomID = parseInt(Math.random() * 10000000);
-  const Key = `${randomID}.jpg`;
+const getDownloadURLs = async function (event) {
+  try {
+    const bucketParams = { Bucket: process.env.UploadBucket };
+    const objects = await s3.listObjects(bucketParams).promise();
+    const downloadURLs = [];
+    for (const obj of objects["Contents"]) {
+      // Get signed URL from S3
+      const s3Params = {
+        Bucket: process.env.UploadBucket,
+        Key: obj["Key"],
+        Expires: URL_EXPIRATION_SECONDS,
+      };
 
-  // Get signed URL from S3
-  const s3Params = {
-    Bucket: process.env.UploadBucket,
-    Key,
-    Expires: URL_EXPIRATION_SECONDS,
-    ContentType: "image/jpeg",
-  };
-  const uploadURL = await s3.getSignedUrlPromise("putObject", s3Params);
-
-  return JSON.stringify({
-    uploadURL: uploadURL,
-    Key,
-  });
+      downloadURLs.push(await s3.getSignedUrlPromise("getObject", s3Params));
+    }
+    return JSON.stringify({
+      downloadURLs: downloadURLs,
+    });
+  } catch (err) {
+    console.log("Error", err);
+  }
 };
